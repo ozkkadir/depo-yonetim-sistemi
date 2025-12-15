@@ -1,3 +1,15 @@
+require('dotenv').config();
+// ... diğer importlar ...
+
+// BU SATIRI EKLEYİN:
+console.log("-------------------------------------------------");
+console.log("KONTROL EDİLİYOR: DATABASE_URL VAR MI?");
+console.log("URL DEĞERİ:", process.env.DATABASE_URL ? "DOLU (OKUNDU)" : "BOŞ (YOK!!)");
+console.log("-------------------------------------------------");
+
+const pool = new Pool({
+  // ...
+
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
