@@ -1,15 +1,3 @@
-require('dotenv').config();
-// ... diğer importlar ...
-
-// BU SATIRI EKLEYİN:
-console.log("-------------------------------------------------");
-console.log("KONTROL EDİLİYOR: DATABASE_URL VAR MI?");
-console.log("URL DEĞERİ:", process.env.DATABASE_URL ? "DOLU (OKUNDU)" : "BOŞ (YOK!!)");
-console.log("-------------------------------------------------");
-
-const pool = new Pool({
-  // ...
-
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
@@ -17,6 +5,14 @@ require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// --- HATA AYIKLAMA (DEBUG) KODU ---
+console.log("-------------------------------------------------");
+console.log("KONTROL EDİLİYOR: DATABASE_URL VAR MI?");
+// Eğer process.env.DATABASE_URL undefined ise 'BOŞ', değilse 'DOLU' yazar
+console.log("URL DEĞERİ:", process.env.DATABASE_URL ? "DOLU (OKUNDU)" : "BOŞ (YOK!!)");
+console.log("-------------------------------------------------");
+// ----------------------------------
 
 // Middleware
 app.use(cors());
@@ -81,7 +77,7 @@ app.get('/api/setup-db', async (req, res) => {
 
       -- Örnek Ürün: KP-100
       INSERT INTO products (product_code, product_name, category_id, brand_id, image_url) 
-      VALUES ('KP-100', 'Cam Balkon Köşe Dönüş Profili', 1, 1, 'https://placehold.co/100x100?text=Profil');
+      VALUES ('KP-100', 'Cam Balkon Köşe Dönüş Profili', 1, 1, '[https://placehold.co/100x100?text=Profil](https://placehold.co/100x100?text=Profil)');
       
       -- KP-100 için Stok (Eloksal - 100 Boy)
       INSERT INTO inventory (product_id, color_id, quantity, unit_id, avg_buying_price, selling_price)
@@ -96,7 +92,7 @@ app.get('/api/setup-db', async (req, res) => {
   }
 });
 
-// 2. ÜRÜNLERİ LİSTELE (Frontend Burayı Kullanacak)
+// 2. ÜRÜNLERİ LİSTELE
 app.get('/api/products', async (req, res) => {
   try {
     const query = `
