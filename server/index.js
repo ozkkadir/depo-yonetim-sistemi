@@ -14,144 +14,127 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-app.get('/', (req, res) => res.send('DepoPro Advanced API Hazır!'));
+app.get('/', (req, res) => res.send('DepoPro V4 - Full Detay API Hazır!'));
 
-// --- GELİŞMİŞ VERİTABANI KURULUMU ---
+// --- GELİŞMİŞ VERİTABANI KURULUMU (RESET) ---
+// Frontend'deki "Veritabanını Sıfırla" butonu burayı tetikler.
 app.get('/api/setup-db', async (req, res) => {
   try {
     const setupQuery = `
-      -- Önce temizlik
-      DROP TABLE IF EXISTS account_transactions, accounts, inventory, product_series_map, products, series, settings_currencies, settings_units, settings_languages, colors, categories, brands CASCADE;
+      -- 1. Önce eski tabloları temizle
+      DROP TABLE IF EXISTS account_transactions, accounts, inventory, product_series_map, products, series, colors, categories, brands CASCADE;
 
-      -- 1. AYAR TABLOLARI
-      CREATE TABLE settings_languages (lang_code VARCHAR(5) PRIMARY KEY, lang_name VARCHAR(50));
-      CREATE TABLE settings_units (unit_id SERIAL PRIMARY KEY, unit_name VARCHAR(20));
-      CREATE TABLE settings_currencies (
-        currency_code VARCHAR(3) PRIMARY KEY, 
-        currency_name VARCHAR(50), 
-        exchange_rate DECIMAL(10, 4) DEFAULT 1.0
-      );
-
-      -- 2. TANIM TABLOLARI
+      -- 2. Tanım Tabloları Oluştur
       CREATE TABLE brands (brand_id SERIAL PRIMARY KEY, brand_name VARCHAR(100));
       CREATE TABLE categories (category_id SERIAL PRIMARY KEY, category_name VARCHAR(100));
       CREATE TABLE colors (color_id SERIAL PRIMARY KEY, color_name VARCHAR(50), hex_code VARCHAR(7));
       
-      -- 3. ÜRÜN VE SERİ YAPISI
+      -- 3. Seri Tablosu
       CREATE TABLE series (
           series_id SERIAL PRIMARY KEY, 
           series_name VARCHAR(100), 
-          brand_id INT REFERENCES brands(brand_id),
-          technical_drawing_url VARCHAR(255) -- Seri bazlı teknik çizim
+          brand_id INT REFERENCES brands(brand_id)
       );
       
+      -- 4. Ürün Ana Kartı (Detaylı)
       CREATE TABLE products (
           product_id SERIAL PRIMARY KEY,
-          product_code VARCHAR(50) UNIQUE,
+          product_code VARCHAR(50) UNIQUE, -- Stok Kodu (Örn: KP-100)
           product_name VARCHAR(150),
           category_id INT REFERENCES categories(category_id),
           brand_id INT REFERENCES brands(brand_id),
-          image_url VARCHAR(255),
-          technical_drawing_url VARCHAR(255), -- Ürün bazlı teknik çizim
-          description TEXT
+          image_url TEXT, -- Ürün Resmi Linki
+          technical_drawing_url TEXT, -- Teknik Çizim Linki
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
-      -- Ürün ve Seri Arasında Çoktan Çoğa İlişki (Bir ürün birden fazla seriye ait olabilir)
+      -- Ürün-Seri Eşleşmesi (Bir ürün birden fazla seriye uyumlu olabilir)
       CREATE TABLE product_series_map (
           map_id SERIAL PRIMARY KEY,
           product_id INT REFERENCES products(product_id) ON DELETE CASCADE,
           series_id INT REFERENCES series(series_id) ON DELETE CASCADE
       );
 
+      -- 5. Stok Varyantları (Fiyatlar ve Stok Miktarı Burada)
       CREATE TABLE inventory (
           inventory_id SERIAL PRIMARY KEY,
           product_id INT REFERENCES products(product_id) ON DELETE CASCADE,
           color_id INT REFERENCES colors(color_id),
           quantity DECIMAL(10, 2) DEFAULT 0,
-          unit_id INT REFERENCES settings_units(unit_id),
+          unit VARCHAR(20) DEFAULT 'Adet',
           critical_stock INT DEFAULT 10,
-          buying_price DECIMAL(10, 2) DEFAULT 0,
-          selling_price DECIMAL(10, 2) DEFAULT 0,
-          currency_code VARCHAR(3) REFERENCES settings_currencies(currency_code) DEFAULT 'TRY'
+          buying_price DECIMAL(10, 2) DEFAULT 0, -- Alış Fiyatı (Maliyet)
+          selling_price DECIMAL(10, 2) DEFAULT 0, -- Satış Fiyatı (Liste)
+          currency VARCHAR(3) DEFAULT 'TRY'
       );
 
-      -- 4. CARİ SİSTEMİ
+      -- 6. Cari Hesaplar
       CREATE TABLE accounts (
           account_id SERIAL PRIMARY KEY,
-          account_name VARCHAR(150) NOT NULL,
+          account_name VARCHAR(150),
           account_type VARCHAR(20), 
-          tax_no VARCHAR(50),
           phone VARCHAR(20),
-          email VARCHAR(100),
-          address TEXT,
+          tax_no VARCHAR(50),
           current_balance DECIMAL(12, 2) DEFAULT 0
       );
 
-      -- ÖRNEK VERİLERİ YÜKLE
-      INSERT INTO settings_units (unit_name) VALUES ('Adet'), ('Boy'), ('Metre'), ('Kg');
-      INSERT INTO settings_currencies (currency_code, currency_name, exchange_rate) VALUES ('TRY', 'Türk Lirası', 1.0), ('USD', 'Amerikan Doları', 32.50), ('EUR', 'Euro', 35.20);
+      -- 7. Varsayılan (Örnek) Verileri Yükle
       INSERT INTO brands (brand_name) VALUES ('Albert Genau'), ('Pimapen'), ('Winsa'), ('Asaş');
-      INSERT INTO categories (category_name) VALUES ('Profil'), ('Aksesuar'), ('Conta'), ('Menteşe');
-      INSERT INTO colors (color_name, hex_code) VALUES ('Eloksal', '#C0C0C0'), ('Antrasit', '#2F4F4F'), ('Ham', '#F5F5DC'), ('Siyah', '#000000');
-      
+      INSERT INTO categories (category_name) VALUES ('Profil'), ('Aksesuar'), ('Menteşe'), ('Tekerlek');
+      INSERT INTO colors (color_name, hex_code) VALUES ('Eloksal', '#C0C0C0'), ('Antrasit', '#2F4F4F'), ('Siyah', '#000000'), ('Ham', '#F5F5DC'), ('Beyaz', '#FFFFFF');
       INSERT INTO series (series_name, brand_id) VALUES ('Statü', 1), ('Tiara 08', 1), ('Comfort', 2);
       
-      -- Ürün 1: Profil
-      INSERT INTO products (product_code, product_name, category_id, brand_id, image_url, technical_drawing_url) 
-      VALUES ('KP-100', 'Cam Balkon Köşe Dönüş Profili', 1, 1, 'https://placehold.co/100x100?text=Profil', 'https://placehold.co/200x100?text=Kesit');
+      -- Örnek Ürün Ekleme
+      INSERT INTO products (product_code, product_name, category_id, brand_id, image_url) 
+      VALUES ('KP-100', 'Köşe Dönüş Profili', 1, 1, 'https://placehold.co/100x100?text=Profil');
       
-      -- Ürünü Serilere Bağla (Hem Statü hem Tiara uyumlu olsun)
-      INSERT INTO product_series_map (product_id, series_id) VALUES (1, 1), (1, 2);
-      
-      -- Stok Varyantları
-      INSERT INTO inventory (product_id, color_id, quantity, unit_id, selling_price, currency_code) VALUES (1, 1, 120, 2, 250, 'TRY'); -- Eloksal
-      INSERT INTO inventory (product_id, color_id, quantity, unit_id, selling_price, currency_code) VALUES (1, 2, 45, 2, 280, 'TRY'); -- Antrasit
+      -- Örnek Stoğu Ekleme
+      INSERT INTO inventory (product_id, color_id, quantity, unit, buying_price, selling_price) 
+      VALUES (1, 1, 100, 'Boy', 150.00, 250.00); 
 
-      -- Cari
-      INSERT INTO accounts (account_name, account_type, phone, current_balance) VALUES ('Örnek Yapı Market', 'Musteri', '05551112233', 15000);
+      INSERT INTO accounts (account_name, account_type, phone, current_balance) VALUES ('Örnek Yapı Market', 'Musteri', '05551112233', 5000);
     `;
+    
     await pool.query(setupQuery);
-    res.send("<h1>Gelişmiş Veritabanı Kuruldu!</h1>");
-  } catch (err) { res.status(500).send(`Hata: ${err.message}`); }
+    res.send("<h1>Veritabanı Başarıyla Kuruldu (V4)!</h1>");
+  } catch (err) { 
+    console.error(err);
+    res.status(500).send(`Hata: ${err.message}`); 
+  }
 });
 
 // --- ROTALAR ---
 
-// Ürünleri Listele (Detaylı JSON yapısı)
+// 1. Ürünleri Listele (Frontend'in beklediği detaylı yapı)
 app.get('/api/products', async (req, res) => {
   try {
     const query = `
       SELECT 
-        p.product_id as id, 
-        p.product_code as code, 
-        p.product_name as name, 
-        p.image_url as image,
-        p.technical_drawing_url as technical,
-        b.brand_name as brand, 
-        c.category_name as category,
-        (
+        p.*, 
+        b.brand_name, 
+        c.category_name,
+        -- Ürüne bağlı serileri dizi olarak çek
+        COALESCE((
           SELECT json_agg(s.series_name) 
           FROM product_series_map psm 
           JOIN series s ON psm.series_id = s.series_id 
           WHERE psm.product_id = p.product_id
-        ) as series,
-        COALESCE(
-          json_agg(json_build_object(
-            'inv_id', i.inventory_id,
-            'color', co.color_name,
-            'stock', i.quantity,
-            'unit', u.unit_name,
-            'critical', i.critical_stock,
-            'price', i.selling_price,
-            'currency', i.currency_code
-          )) FILTER (WHERE co.color_name IS NOT NULL), '[]'
-        ) as variants
+        ), '[]') as series,
+        -- Ürüne bağlı varyantları (renk, stok, fiyat) çek
+        COALESCE(json_agg(json_build_object(
+          'inv_id', i.inventory_id, 
+          'color', co.color_name, 
+          'stock', i.quantity, 
+          'unit', i.unit, 
+          'critical', i.critical_stock, 
+          'buying_price', i.buying_price, 
+          'selling_price', i.selling_price
+        )) FILTER (WHERE co.color_name IS NOT NULL), '[]') as variants
       FROM products p
       JOIN brands b ON p.brand_id = b.brand_id
       JOIN categories c ON p.category_id = c.category_id
       LEFT JOIN inventory i ON p.product_id = i.product_id
       LEFT JOIN colors co ON i.color_id = co.color_id
-      LEFT JOIN settings_units u ON i.unit_id = u.unit_id
       GROUP BY p.product_id, b.brand_name, c.category_name;
     `;
     const { rows } = await pool.query(query);
@@ -159,29 +142,96 @@ app.get('/api/products', async (req, res) => {
   } catch (err) { res.status(500).json(err); }
 });
 
-// Ürün Silme
+// 2. Yeni Ürün Ekle (TRANSACTION ile güvenli kayıt)
+// Frontend'deki Modal bu adrese POST atar.
+app.post('/api/products', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN'); // İşlemi başlat
+    
+    // Gelen verileri al
+    const { code, name, brand_id, category_id, image_url, tech_url, series_ids, variants } = req.body;
+
+    // A. Ürün Kartını Oluştur
+    const prodRes = await client.query(
+      `INSERT INTO products (product_code, product_name, brand_id, category_id, image_url, technical_drawing_url) 
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING product_id`,
+      [code, name, brand_id, category_id, image_url, tech_url]
+    );
+    const productId = prodRes.rows[0].product_id;
+
+    // B. Serilerle Eşleştir (Varsa)
+    if (series_ids && series_ids.length > 0) {
+      for (let sid of series_ids) {
+        await client.query('INSERT INTO product_series_map (product_id, series_id) VALUES ($1, $2)', [productId, sid]);
+      }
+    }
+
+    // C. Stok Varyantlarını Ekle (Renk, Adet, Fiyat)
+    if (variants && variants.length > 0) {
+      for (let v of variants) {
+        // Boş varyant gelirse atla
+        if (!v.color_id) continue;
+        
+        await client.query(
+          `INSERT INTO inventory (product_id, color_id, quantity, unit, buying_price, selling_price) 
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [productId, v.color_id, v.quantity || 0, v.unit || 'Adet', v.buying_price || 0, v.selling_price || 0]
+        );
+      }
+    }
+
+    await client.query('COMMIT'); // Hata yoksa onayla
+    res.json({ message: 'Ürün başarıyla oluşturuldu' });
+  } catch (e) {
+    await client.query('ROLLBACK'); // Hata varsa her şeyi geri al
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+// 3. Ürün Silme
 app.delete('/api/products/:id', async (req, res) => {
-  try {
-    await pool.query('DELETE FROM products WHERE product_id = $1', [req.params.id]);
-    res.json({ message: 'Ürün silindi' });
-  } catch (err) { res.status(500).json(err); }
+  try { 
+    await pool.query('DELETE FROM products WHERE product_id=$1', [req.params.id]); 
+    res.json({msg:'ok'}); 
+  } catch(e) { res.status(500).json(e); } 
 });
 
-// Stok Güncelleme
-app.put('/api/inventory/:id', async (req, res) => {
-  const { quantity } = req.body;
-  try {
-    await pool.query('UPDATE inventory SET quantity = $1 WHERE inventory_id = $2', [quantity, req.params.id]);
-    res.json({ message: 'Stok güncellendi' });
-  } catch (err) { res.status(500).json(err); }
+// 4. Stok Miktarı Güncelleme (Hızlı İşlem)
+app.put('/api/inventory/:id', async (req, res) => { 
+  try { 
+    await pool.query('UPDATE inventory SET quantity=$1 WHERE inventory_id=$2', [req.body.quantity, req.params.id]); 
+    res.json({msg:'ok'}); 
+  } catch(e) { res.status(500).json(e); } 
 });
 
-// Diğer Tanım Rotaları
-app.get('/api/brands', async (req, res) => {
-    try { const { rows } = await pool.query('SELECT * FROM brands'); res.json(rows); } catch (err) { res.status(500).json(err); }
-});
-app.get('/api/accounts', async (req, res) => {
-    try { const { rows } = await pool.query('SELECT * FROM accounts ORDER BY account_name'); res.json(rows); } catch (err) { res.status(500).json(err); }
+// --- YARDIMCI TANIM ROTALARI ---
+
+// Markalar
+app.get('/api/brands', async (req, res) => { try { const { rows } = await pool.query('SELECT * FROM brands ORDER BY brand_name'); res.json(rows); } catch(e) { res.status(500).json(e); } });
+app.post('/api/brands', async (req, res) => { try { await pool.query('INSERT INTO brands (brand_name) VALUES ($1)', [req.body.brand_name]); res.json({msg:'ok'}); } catch(e) { res.status(500).json(e); } });
+app.delete('/api/brands/:id', async (req, res) => { try { await pool.query('DELETE FROM brands WHERE brand_id=$1', [req.params.id]); res.json({msg:'ok'}); } catch(e) { res.status(500).json(e); } });
+
+// Seriler
+app.get('/api/series', async (req, res) => { try { const { rows } = await pool.query('SELECT s.*, b.brand_name FROM series s JOIN brands b ON s.brand_id = b.brand_id ORDER BY s.series_name'); res.json(rows); } catch(e) { res.status(500).json(e); } });
+app.post('/api/series', async (req, res) => { try { await pool.query('INSERT INTO series (series_name, brand_id) VALUES ($1, $2)', [req.body.series_name, req.body.brand_id]); res.json({msg:'ok'}); } catch(e) { res.status(500).json(e); } });
+app.delete('/api/series/:id', async (req, res) => { try { await pool.query('DELETE FROM series WHERE series_id=$1', [req.params.id]); res.json({msg:'ok'}); } catch(e) { res.status(500).json(e); } });
+
+// Diğerleri (Dropdownlar için)
+app.get('/api/categories', async (req, res) => { try { const { rows } = await pool.query('SELECT * FROM categories'); res.json(rows); } catch(e) { res.status(500).json(e); } });
+app.get('/api/colors', async (req, res) => { try { const { rows } = await pool.query('SELECT * FROM colors'); res.json(rows); } catch(e) { res.status(500).json(e); } });
+
+// Cari Hesaplar
+app.get('/api/accounts', async (req, res) => { try { const { rows } = await pool.query('SELECT * FROM accounts ORDER BY account_name'); res.json(rows); } catch(e) { res.status(500).json(e); } });
+app.post('/api/accounts', async (req, res) => { 
+  const { account_name, account_type, phone, tax_no } = req.body;
+  try { 
+    await pool.query('INSERT INTO accounts (account_name, account_type, phone, tax_no) VALUES ($1, $2, $3, $4)', [account_name, account_type, phone, tax_no]); 
+    res.json({msg:'ok'}); 
+  } catch(e) { res.status(500).json(e); } 
 });
 
 app.listen(PORT, () => console.log(`Sunucu ${PORT} portunda.`));
